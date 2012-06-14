@@ -5,20 +5,15 @@ import com.novus.salat.annotations._
 import com.novus.salat.global._
 import com.mongodb.casbah.Imports._
 import java.util.Date
+import scala.collection.mutable.Map
 
-case class EngineAnalysis(
+case class Move(
+  score: Double = 0.0,
   depth: Int = 0,
-  engine: String = "stockfish",
-  bestScore: Double = -500.0,
-  analysis: Seq[Analysis] = null
-)
-
-case class Analysis(
-  score: Double,
-  move: String,
   link: ObjectId = null,
   mate: Option[Int] = None,
-  moves: Seq[String]
+  scores: Seq[Double] = Seq[Double](),
+  bestMoves: Seq[String] = null
 )
 
 case class Position( 
@@ -28,8 +23,5 @@ case class Position(
   bestScore: Double = -500.0,
   maxDepth: Int = 0,
   minMoves: Int = 0,
-  ut: Date = new Date,
-  ct: Date = new Date,
-  rt: Long = 0,
-  engineAnalysis: Seq[EngineAnalysis] = null
+  moves: Map[String,Move]  = null
 )
