@@ -58,7 +58,8 @@ package object never_typehint_context {
     val exe = new Exe("/Users/wfreeman/Documents/Stockfish/src/stockfish", out => println("o: " + out), err => println("e: " + err))
     exe.write("setoption name Hash value 1024");
     exe.write("setoption name MultiPV value 100");
-    val mongoConn = MongoConnection();
+    val mongoConn = MongoConnection(replicaSetSeeds=
+      new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     val fen = new FEN;
     var maxDepth = 30;
     val maxThreshhold = 30.0;
