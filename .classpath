@@ -10,5 +10,6 @@
 	<classpathentry kind="lib" path="/Users/wfreeman/.ivy2/cache/org.mongodb/mongo-java-driver/jars/mongo-java-driver-2.5.3.jar"/>
 	<classpathentry kind="lib" path="/Users/wfreeman/.ivy2/cache/com.mongodb.casbah/casbah-query_2.9.1/jars/casbah-query_2.9.1-2.1.5-1.jar"/>
 	<classpathentry kind="lib" path="/Users/wfreeman/Documents/mongochess/lib/ictk-0.2.0-nonet.jar"/>
+	<classpathentry kind="lib" path="/Users/wfreeman/.ivy2/cache/joda-time/joda-time/jars/joda-time-1.6.2.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

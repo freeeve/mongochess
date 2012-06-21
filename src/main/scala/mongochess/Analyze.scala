@@ -69,7 +69,8 @@ package object never_typehint_context {
       val unanalyzed = if(bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> -1)).limit(1);
+        //positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> -1)).limit(1);
+        positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fe2238803641ee08da420aa")));
       } else {
         lastBestLink = bestLink;
         positionsColl.find(MongoDBObject("_id" -> bestLink));
@@ -185,6 +186,12 @@ package object never_typehint_context {
                         positionsColl.save(grater[Position].asDBObject(newPos));
                         link = newPos.id
                         if(-newPos.bestScore == bestScoreThisDepth) {
+                          bestLink = link
+                        }
+                      } else {
+                        val p = grater[Position].asObject(positionsColl.findOne(MongoDBObject("pos" -> shortenedFen)).get);
+                        link = p.id
+                        if(-p.bestScore == bestScoreThisDepth) {
                           bestLink = link
                         }
                       }
