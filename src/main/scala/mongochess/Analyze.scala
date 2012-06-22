@@ -55,14 +55,14 @@ package object never_typehint_context {
   def main(args: Array[String]): Unit = {
     val san = new SAN
 
-    val exe = new Exe("/Users/wfreeman/Documents/Stockfish/src/stockfish", out => println("o: " + out), err => println("e: " + err))
+    val exe = new Exe("stockfish", out => println("o: " + out), err => println("e: " + err))
     exe.write("setoption name Hash value 1024");
     exe.write("setoption name MultiPV value 100");
     val mongoConn = MongoConnection(replicaSetSeeds=
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     val fen = new FEN;
     var maxDepth = 30;
-    val maxThreshhold = 30.0;
+    val maxThreshhold = 999.0;
     var bestLink:ObjectId = null;
     var lastBestLink:ObjectId = null;
     val positionsColl = mongoConn("mongochess")("positions");
@@ -70,11 +70,12 @@ package object never_typehint_context {
       val unanalyzed = if(bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        //positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> -1)).limit(1);
-        positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fe2238803641ee08da420aa")));
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
+        //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fe305a70364c0f87527af6e")));
       } else {
         lastBestLink = bestLink;
-        positionsColl.find(MongoDBObject("_id" -> bestLink));
+        //positionsColl.find(MongoDBObject("_id" -> bestLink));
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
       }
       //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
       if (unanalyzed.size == 0) maxDepth += 1;
@@ -166,15 +167,15 @@ package object never_typehint_context {
                 var link: ObjectId = null;
                 if (depth == maxDepth && (score > -maxThreshhold && score < maxThreshhold) && position.minMoves < 80) {
                   // make sure it doesn't exist first (and check the hash)
-                  if (!createHash.contains(fenAfterMove)) {
-                    val fenSplit = fenAfterMove.split(" ");
-                    val shortenedFen = {
+                  val fenSplit = fenAfterMove.split(" ");
+                  val shortenedFen = {
                       var res = "";
                       for (i <- 0 to 3) {
                         res += fenSplit(i) + " ";
                       }
                       res.substring(0, res.length - 1);
                     }
+                  if (!createHash.contains(fenAfterMove)) {
                     println("checking whether fen exists: " + shortenedFen)
                     //shortenedFen.replaceAll("/", "\\/");
                     createHash.add(fenAfterMove);
@@ -198,7 +199,13 @@ package object never_typehint_context {
                       }
                     }
 
-                  }
+                  } else {
+                        val p = grater[Position].asObject(positionsColl.findOne(MongoDBObject("pos" -> shortenedFen)).get);
+                        link = p.id
+                        if(-p.bestScore == bestScoreThisDepth) {
+                          bestLink = link
+                        }
+                      }
 
                 }
                 if (position.moves == null) {
