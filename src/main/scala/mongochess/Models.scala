@@ -13,7 +13,8 @@ case class Move(
   link: ObjectId = null,
   mate: Option[Int] = None,
   scores: Seq[Double] = Seq[Double](),
-  bestMoves: Seq[String] = null
+  bestMoves: Seq[String] = null,
+  endFen: String = null
 )
 
 case class Position( 
