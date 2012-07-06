@@ -8,6 +8,9 @@ import java.util.Date
 import scala.collection.mutable.Map
 
 case class Move(
+  move: String,
+  attrSafeMove: String,
+  scoreDepth: Seq[String] = null,
   score: Double = 0.0,
   depth: Int = 0,
   link: ObjectId = null,
@@ -24,5 +27,8 @@ case class Position(
   bestScore: Double = -500.0,
   maxDepth: Int = 0,
   minMoves: Int = 0,
-  moves: Map[String,Move]  = null
+  moves: Seq[Move]  = null
 )
+
+case class Image(image: Array[Byte]
+                )

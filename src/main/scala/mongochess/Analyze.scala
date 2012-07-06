@@ -58,10 +58,10 @@ package object never_typehint_context {
     val exe = new Exe("stockfish", out => println("o: " + out), err => println("e: " + err))
     exe.write("setoption name Hash value 1024");
     exe.write("setoption name MultiPV value 100");
-    val mongoConn = MongoConnection(replicaSetSeeds =
+    val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     val fen = new FEN;
-    var maxDepth = 30;
+    var maxDepth = 15;
     val maxThreshhold = 999.0;
     var bestLink: ObjectId = null;
     var lastBestLink: ObjectId = null;
@@ -70,12 +70,12 @@ package object never_typehint_context {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> -1, "bestScore" -> -1)).limit(1);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;
-        positionsColl.find(MongoDBObject("_id" -> bestLink));
-        //positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
+        //positionsColl.find(MongoDBObject("_id" -> bestLink));
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
       }
       //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
       if (unanalyzed.size == 0) maxDepth += 1;
@@ -91,16 +91,22 @@ package object never_typehint_context {
 
         if (readUntilBestMove()) {
           println("analyzed in " + "xxx" + " seconds; best score: " + position.bestScore + ". \n");
-          for ((moveStr, move) <- position.moves) {
+          
+          // add endfen, sort by score, and calculate scoreDepth
+          position.moves.zipWithIndex.foreach { case(move, idx) =>
             val board = fen.stringToBoard(position.fen).asInstanceOf[ChessBoard]
-            board.playMove(san.stringToMove(board, moveStr))
+            board.playMove(san.stringToMove(board, move.move))
             for (m <- move.bestMoves) {
               val chessMove = san.stringToMove(board, m)
               board.playMove(chessMove);
             }
-            position = position.copy(moves = position.moves + (moveStr ->
-              position.moves(moveStr).copy(endFen = fen.boardToString(board))))
+            val scoreDepth = move.scores.zipWithIndex.map { case(score, i) => "["+i+","+score+"]" }
+            position = position.copy(
+               moves = position.moves.updated(idx, 
+                  move.copy(endFen = fen.boardToString(board), scoreDepth = scoreDepth)))
           }
+          position = position.copy(moves = position.moves.sortWith(lt = (a:Move, b:Move) => {a.score < b.score} ))
+
           positionsColl.save(grater[Position].asDBObject(position))
         }
 
@@ -219,16 +225,33 @@ package object never_typehint_context {
 
                 }
                 if (position.moves == null) {
-                  position = position.copy(moves = Map[String, Move]())
+                  position = position.copy(moves = Seq[Move]())
                 }
 
-                if (position.moves.getOrElse(moveStr, null) == null) {
-                  position = position.copy(bestScore = bestScoreThisDepth, moves = position.moves + (moveStr ->
-                    Move(bestMoves = moveList, score = score, link = link, depth = depth, scores = Seq(score))))
+                def findMove(moves:Seq[Move], moveStr:String):Int = {
+                  moves.zipWithIndex.foreach { case (move, i) =>
+                    if(move.move == moveStr) return i;
+                  }
+                  return -1;
+                }
+                val idx = findMove(position.moves, moveStr);
+                if (idx == -1) {
+                  position = position.copy(bestScore = bestScoreThisDepth, moves = position.moves :+
+                                           Move(move = moveStr, attrSafeMove = moveStr.replace("+","check").replace("=","prom"), bestMoves = moveList, score = score, link = link, depth = depth, scores = Seq(score)))
                 } else {
-                  position = position.copy(maxDepth = depth, bestScore = bestScoreThisDepth, moves = position.moves + (moveStr ->
-                    position.moves(moveStr).copy(bestMoves = moveList, score = score, link = link, depth = depth, scores = if (position.moves(moveStr).scores.length >= depth) { position.moves(moveStr).scores.updated(depth - 1, score) } else { position.moves(moveStr).scores :+ score })))
-
+                  position = position.copy(maxDepth = depth, 
+                                bestScore = bestScoreThisDepth, 
+                                moves = position.moves.updated(idx, 
+                                   position.moves(idx).copy(bestMoves = moveList, 
+                                      score = score, 
+                                      link = link, 
+                                      depth = depth, 
+                                      scores = if(position.moves(idx).scores.length >= depth) { 
+                                            position.moves(idx).scores.updated(depth - 1, score)} 
+                                         else { 
+                                           position.moves(idx).scores :+ score
+                                         }
+                                   )))
                 }
 
               }
