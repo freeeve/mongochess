@@ -9,8 +9,6 @@ import scala.collection.mutable.Map
 
 case class Move(
   move: String,
-  attrSafeMove: String,
-  scoreDepth: Seq[String] = null,
   score: Double = 0.0,
   depth: Int = 0,
   link: ObjectId = null,

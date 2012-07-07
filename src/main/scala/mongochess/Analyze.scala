@@ -4,7 +4,7 @@ import com.novus.salat._
 import com.novus.salat.annotations._
 import com.novus.salat.global._
 import com.mongodb.casbah.Imports._
-import scala.collection.mutable.HashSet
+import scala.collection.mutable.HashMap
 import java.util.Date
 import ictk.boardgame.chess._
 import ictk.boardgame.chess.io._
@@ -70,12 +70,12 @@ package object never_typehint_context {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(10);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;
         //positionsColl.find(MongoDBObject("_id" -> bestLink));
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(10);
       }
       //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
       if (unanalyzed.size == 0) maxDepth += 1;
@@ -100,18 +100,17 @@ package object never_typehint_context {
               val chessMove = san.stringToMove(board, m)
               board.playMove(chessMove);
             }
-            val scoreDepth = move.scores.zipWithIndex.map { case(score, i) => "["+i+","+score+"]" }
             position = position.copy(
                moves = position.moves.updated(idx, 
-                  move.copy(endFen = fen.boardToString(board), scoreDepth = scoreDepth)))
+                  move.copy(endFen = fen.boardToString(board))))
           }
-          position = position.copy(moves = position.moves.sortWith(lt = (a:Move, b:Move) => {a.score < b.score} ))
+          position = position.copy(moves = position.moves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))
 
           positionsColl.save(grater[Position].asDBObject(position))
         }
 
         def readUntilBestMove(): Boolean = {
-          val createHash = new HashSet[String]
+          val createHash = new HashMap[String, (ObjectId, Double)]
 
           def algToCM(b: ChessBoard, moveStr: String): ChessMove = {
             if (moveStr.length == 4) {
@@ -194,7 +193,6 @@ package object never_typehint_context {
                   if (!createHash.contains(fenAfterMove)) {
                     println("checking whether fen exists: " + shortenedFen)
                     //shortenedFen.replaceAll("/", "\\/");
-                    createHash.add(fenAfterMove);
                     val temp = fen.stringToBoard(fenAfterMove).asInstanceOf[ChessBoard];
                     if (temp.getUnCapturedPieces(false).size + temp.getUnCapturedPieces(true).size > 6 && !temp.is50MoveRuleApplicible) {
                       if (positionsColl.count(MongoDBObject("pos" -> shortenedFen)) == 0) {
@@ -214,11 +212,19 @@ package object never_typehint_context {
                         }
                       }
                     }
+                    
+                    createHash += ((fenAfterMove, (link, score)));
 
                   } else {
-                    val p = grater[Position].asObject(positionsColl.findOne(MongoDBObject("pos" -> shortenedFen)).get);
-                    link = p.id
-                    if (-p.bestScore == bestScoreThisDepth) {
+                    var bestScore = 0.0;
+                    link = createHash.getOrElse(fenAfterMove, (null, 0.0))._1;
+                    bestScore = createHash.getOrElse(fenAfterMove, (null, 0.0))._2;
+                    if(link == null) {
+                      val p = grater[Position].asObject(positionsColl.findOne(MongoDBObject("pos" -> shortenedFen)).get);
+                      link = p.id
+                      bestScore = -p.bestScore;
+                    }
+                    if (bestScore == bestScoreThisDepth) {
                       bestLink = link
                     }
                   }
@@ -237,7 +243,7 @@ package object never_typehint_context {
                 val idx = findMove(position.moves, moveStr);
                 if (idx == -1) {
                   position = position.copy(bestScore = bestScoreThisDepth, moves = position.moves :+
-                                           Move(move = moveStr, attrSafeMove = moveStr.replace("+","check").replace("=","prom"), bestMoves = moveList, score = score, link = link, depth = depth, scores = Seq(score)))
+                                           Move(move = moveStr, bestMoves = moveList, score = score, link = link, depth = depth, scores = Seq(score)))
                 } else {
                   position = position.copy(maxDepth = depth, 
                                 bestScore = bestScoreThisDepth, 
