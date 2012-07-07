@@ -4,6 +4,13 @@ Opening books and endgame tables seem like a good idea. But why not pre-analyzin
 We can't solve chess yet, but we can get partway there. That is the goal of this project--not to create a new chess engine, but to use existing
 chess engines to analyze positions deeply, to 30-40 moves, and store the results of the analysis.
 
+The current viewer is at http://mongochess.skeweredrook.com.
+
+## future plans
+I plan to build a client package for download that will be runnable so people can contribute to the project, with stats/tracking, similar to distributed.net.
+
+Still need a way to deepen the analysis by looking at child nodes.
+
 ## License LGPL
 Copyright 2012 Wes Freeman
 
