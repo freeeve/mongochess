@@ -60,6 +60,7 @@ package object never_typehint_context {
     exe.write("setoption name MultiPV value 100");
     val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
+    //val mongoConn = MongoConnection()
     val fen = new FEN;
     var maxDepth = 15;
     val maxThreshhold = 999.0;
@@ -70,12 +71,12 @@ package object never_typehint_context {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(10);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(3);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;
         //positionsColl.find(MongoDBObject("_id" -> bestLink));
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(10);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(3);
       }
       //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
       if (unanalyzed.size == 0) maxDepth += 1;
@@ -93,6 +94,8 @@ package object never_typehint_context {
           println("analyzed in " + "xxx" + " seconds; best score: " + position.bestScore + ". \n");
           
           // add endfen, sort by score, and calculate scoreDepth
+          // should add flag for deepen (deepenParent = true), so that deepen can check
+          // search on the flag to try to make the parent move deeper
           position.moves.zipWithIndex.foreach { case(move, idx) =>
             val board = fen.stringToBoard(position.fen).asInstanceOf[ChessBoard]
             board.playMove(san.stringToMove(board, move.move))
@@ -104,7 +107,7 @@ package object never_typehint_context {
                moves = position.moves.updated(idx, 
                   move.copy(endFen = fen.boardToString(board))))
           }
-          position = position.copy(moves = position.moves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))
+          position = position.copy(parentDeepen = Some(true), moves = position.moves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))
 
           positionsColl.save(grater[Position].asDBObject(position))
         }

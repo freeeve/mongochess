@@ -25,7 +25,8 @@ case class Position(
   bestScore: Double = -500.0,
   maxDepth: Int = 0,
   minMoves: Int = 0,
-  moves: Seq[Move]  = null
+  moves: Seq[Move]  = null,
+  parentDeepen:Option[Boolean] = None
 )
 
 case class Image(image: Array[Byte]
