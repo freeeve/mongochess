@@ -32,19 +32,18 @@ package object deepen {
     val fen = new FEN;
     val positionsColl = mongoConn("mongochess")("positions");
     while (true) {
-      //add a delay if none found?
       val children = positionsColl.find(MongoDBObject("parentDeepen"->true, "minMoves" -> MongoDBObject("$gt" -> 0))).sort(MongoDBObject("minMoves" -> -1)).limit(100);
       if(children.size == 0)  {
-        Thread.sleep(10000)
+        Thread.sleep(1000)
       }
       for(childdb <- children) {
         val child = grater[Position].asObject(childdb)
-        println("deepening parents of child: " + child.fen)
+        println("deepening parents of child: " + child.fen + "; " + child.id)
         // get parents
         val parents = positionsColl.find(MongoDBObject("moves.link" -> child.id))
         for(parentdb <- parents) {
           val parent = grater[Position].asObject(parentdb)
-          println("deepening parent: " + parent.fen)
+          println("deepening parent: " + parent.fen + " ; " + parent.id)
           //find move that matches
           def findMoveByLink(moves:Seq[Move], link:ObjectId):Int = {
             moves.zipWithIndex.foreach{ case(move, idx) => 
@@ -58,25 +57,37 @@ package object deepen {
           var idx = findMoveByLink(parent.moves, child.id)
           val move = parent.moves(idx)
           // if parent move depth <= child depth, deepen
-          if(move.depth <= child.maxDepth) {
+          if(move.depth <= child.maxDepth || abs(child.bestScore) > 999.0) {
             // copy moves/scores/bestScore from child record
             // set depth for parent move to child depth + 1
             // need to swap signs for scores from the child
             val newMoves = parent.moves.updated(idx, 
               move.copy(depth = child.maxDepth + 1,
-                        score = child.bestScore * -1.0,
-                        scores = parent.moves(idx).scores ++ Seq(child.moves(0).scores.last * -1.0),
-                        bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves))
+                        score = if(abs(child.bestScore) < 999.0) child.bestScore * -1.0 else child.bestScore * -1.0 + 1.0 * child.bestScore / abs(child.bestScore),
+                        scores = parent.moves(idx).scores ++ child.moves(0).scores.slice(parent.moves(idx).depth - 1, child.moves(0).scores.size).map{ s => s * -1.0},
+                        bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves,
+                        endFen = child.moves(0).endFen))
             var minDepth = 10000;
             // find lowest depth that isn't mate (max complete search depth so far for this node)
             for(m <- newMoves) {
               if(m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
             }
+            if(abs(child.moves(0).score) > 999.0) {
+              for(m <- parent.moves)  {
+                if(m.score > -999.0) {
+                  println("setting priority for : " + m.link)
+                  positionsColl.update(MongoDBObject("_id" -> m.link), MongoDBObject("$set" -> MongoDBObject("priority" -> true)))
+                }
+              }
+            }
             var bestScore = -1000000.0;
+            var forcedDraw:Option[Boolean] = Some(true)
+            newMoves.map ( m => if(m.forcedDraw == None) forcedDraw = None)
             for(m <- newMoves) {
               if(m.score > bestScore) bestScore = m.score;
             }
-            positionsColl.save(grater[Position].asDBObject(parent.copy(parentDeepen=Some(true), bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))))
+            val possiblePrune:Option[Boolean] = if(abs(bestScore) > 999.0 || parent.forcedDraw == true) Some(true) else None
+            positionsColl.save(grater[Position].asDBObject(parent.copy(forcedDraw = forcedDraw, possiblePrune=possiblePrune, parentDeepen=Some(true), bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))))
           }
         }  
         // clear child's parentDeepen flag / save child

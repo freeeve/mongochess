@@ -15,7 +15,8 @@ case class Move(
   mate: Option[Int] = None,
   scores: Seq[Double] = Seq[Double](),
   bestMoves: Seq[String] = null,
-  endFen: String = null
+  endFen: String = null,
+  forcedDraw: Option[Boolean] = None
 )
 
 case class Position( 
@@ -26,8 +27,8 @@ case class Position(
   maxDepth: Int = 0,
   minMoves: Int = 0,
   moves: Seq[Move]  = null,
-  parentDeepen:Option[Boolean] = None
+  parentDeepen:Option[Boolean] = None,
+  possiblePrune:Option[Boolean] = None,
+  prune:Option[Boolean] = None,
+  forcedDraw:Option[Boolean] = None
 )
-
-case class Image(image: Array[Byte]
-                )
