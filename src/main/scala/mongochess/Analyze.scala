@@ -68,17 +68,19 @@ package object analyze {
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     //val mongoConn = MongoConnection()
     val fen = new FEN;
-    var maxDepth = 10;
+    var maxDepth = 15;
     val maxThreshhold = 999.0;
     var bestLink: ObjectId = null;
     var lastBestLink: ObjectId = null;
     val positionsColl = mongoConn("mongochess")("positions");
+    var rand = 1
     while (true) {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
+        rand = rand * -1
         if(positionsColl.count(MongoDBObject("priority" -> true)) > 0)
-          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> -1, "bestScore" -> 1)).limit(1);
+          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> rand, "bestScore" -> 1)).limit(1);
         else 
           positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
@@ -235,7 +237,8 @@ package object analyze {
                         link = p.id
                         println("link: " + link)
                         // check parents (can't have loops to prevent repetition)
-                        val temp = fen.stringToBoard(p.fen).asInstanceOf[ChessBoard];
+                        // I think it will be more efficient to allow repetition--taking this check out
+                        /*val temp = fen.stringToBoard(p.fen).asInstanceOf[ChessBoard];
                         val piecesLeft = temp.getUnCapturedPieces(false).size + temp.getUnCapturedPieces(true).size
                         var checkedParents: HashSet[ObjectId] = HashSet()
                         if (checkParents(link, p.pos)) {
@@ -259,7 +262,7 @@ package object analyze {
                             }
                           }
                           return retVal;
-                        }
+                        }*/
 
                         if (link != null && -p.bestScore == bestScoreThisDepth) {
                           bestLink = link

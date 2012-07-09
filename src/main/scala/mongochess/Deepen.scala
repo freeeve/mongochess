@@ -52,28 +52,37 @@ package object deepen {
               }
             }
             // this should never happen
+            println("this should never happen: -1")
             return -1;
           }
           var idx = findMoveByLink(parent.moves, child.id)
           val move = parent.moves(idx)
           // if parent move depth <= child depth, deepen
-          if(move.depth <= child.maxDepth || abs(child.bestScore) > 999.0) {
+          if(move.depth <= child.maxDepth || abs(child.bestScore) > 999.0 || child.forcedDraw.getOrElse(false)) {
             // copy moves/scores/bestScore from child record
             // set depth for parent move to child depth + 1
             // need to swap signs for scores from the child
-            val newMoves = parent.moves.updated(idx, 
+            val newMoves = if(child.forcedDraw.getOrElse(false)) {
+              parent.moves.updated(idx, 
+              move.copy(depth = parent.moves(idx).depth + 1,
+                        score =  0,
+                        forcedDraw = child.forcedDraw))
+            } else {
+              parent.moves.updated(idx, 
               move.copy(depth = child.maxDepth + 1,
                         score = if(abs(child.bestScore) < 999.0) child.bestScore * -1.0 else child.bestScore * -1.0 + 1.0 * child.bestScore / abs(child.bestScore),
                         scores = parent.moves(idx).scores ++ child.moves(0).scores.slice(parent.moves(idx).depth - 1, child.moves(0).scores.size).map{ s => s * -1.0},
                         bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves,
-                        endFen = child.moves(0).endFen))
+                        endFen = child.moves(0).endFen,
+                        forcedDraw = child.forcedDraw))
+            }
             var minDepth = 10000;
             // find lowest depth that isn't mate (max complete search depth so far for this node)
             for(m <- newMoves) {
               if(m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
             }
-            // if we came back with a mate, let's try another option
-            if(newMoves(idx).score < -999.0) {
+            // if we came back with a mate or draw, let's try another option
+            if(newMoves(idx).score < -999.0 || newMoves(idx).forcedDraw.getOrElse(true)) {
               for(m <- parent.moves)  {
                 if(m.score > -999.0) {
                   println("setting priority for : " + m.link)
@@ -83,11 +92,12 @@ package object deepen {
             }
             var bestScore = -1000000.0;
             var forcedDraw:Option[Boolean] = Some(true)
-            newMoves.map ( m => if(m.forcedDraw == None) forcedDraw = None)
+            newMoves.map ( m => if(m.forcedDraw == None && (m.score > -999.0 && m.score != 0.0)) {forcedDraw = None; println("not forced draw" +m.score);})
+            if(bestScore == 0.0 && forcedDraw.getOrElse(false)) forcedDraw = Some(true)
             for(m <- newMoves) {
               if(m.score > bestScore) bestScore = m.score;
             }
-            val possiblePrune:Option[Boolean] = if(abs(bestScore) > 999.0 || parent.forcedDraw == true) Some(true) else None
+            val possiblePrune:Option[Boolean] = if(abs(bestScore) > 999.0 || parent.forcedDraw.getOrElse(false)) Some(true) else None
             positionsColl.save(grater[Position].asDBObject(parent.copy(forcedDraw = forcedDraw, possiblePrune=possiblePrune, parentDeepen=Some(true), bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a:Move, b:Move) => {a.score > b.score} ))))
           }
         }  
