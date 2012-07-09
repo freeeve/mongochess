@@ -77,7 +77,10 @@ package object analyze {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
+        if(positionsColl.count(MongoDBObject("priority" -> true)) > 0)
+          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> -1, "bestScore" -> 1)).limit(1);
+        else 
+          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;

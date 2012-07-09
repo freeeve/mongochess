@@ -72,7 +72,8 @@ package object deepen {
             for(m <- newMoves) {
               if(m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
             }
-            if(abs(child.moves(0).score) > 999.0) {
+            // if we came back with a mate, let's try another option
+            if(newMoves(idx).score < -999.0) {
               for(m <- parent.moves)  {
                 if(m.score > -999.0) {
                   println("setting priority for : " + m.link)
