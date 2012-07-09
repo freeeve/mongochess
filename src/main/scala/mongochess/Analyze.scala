@@ -68,11 +68,8 @@ package object analyze {
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     //val mongoConn = MongoConnection()
     val fen = new FEN;
-<<<<<<< HEAD
     var maxDepth = 31;
-=======
-    var maxDepth = 10;
->>>>>>> 987cf4b7d2c38ea4a9ec2fdc4cbf9d1805ddcfe6
+    var maxDepth = 15;
     val maxThreshhold = 999.0;
     var bestLink: ObjectId = null;
     var lastBestLink: ObjectId = null;
@@ -81,21 +78,12 @@ package object analyze {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-<<<<<<< HEAD
         positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;
         //positionsColl.find(MongoDBObject("_id" -> bestLink));
         positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
-=======
-        positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
-        //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
-      } else {
-        lastBestLink = bestLink;
-        positionsColl.find(MongoDBObject("_id" -> bestLink));
-        //positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
->>>>>>> 987cf4b7d2c38ea4a9ec2fdc4cbf9d1805ddcfe6
       }
       if (unanalyzed.size == 0) maxDepth += 1;
       for (positionDB <- unanalyzed) {
