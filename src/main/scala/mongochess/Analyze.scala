@@ -56,13 +56,13 @@ package object never_typehint_context {
     val san = new SAN
 
     val exe = new Exe("stockfish", out => println("o: " + out), err => println("e: " + err))
-    exe.write("setoption name Hash value 1024");
+    exe.write("setoption name Hash value 4096");
     exe.write("setoption name MultiPV value 100");
     val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
       new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
     //val mongoConn = MongoConnection()
     val fen = new FEN;
-    var maxDepth = 15;
+    var maxDepth = 31;
     val maxThreshhold = 999.0;
     var bestLink: ObjectId = null;
     var lastBestLink: ObjectId = null;
@@ -71,16 +71,14 @@ package object never_typehint_context {
       val unanalyzed = if (bestLink == null || bestLink == lastBestLink) {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(3);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
         //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
       } else {
         lastBestLink = bestLink;
         //positionsColl.find(MongoDBObject("_id" -> bestLink));
-        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(3);
+        positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
       }
-      //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
       if (unanalyzed.size == 0) maxDepth += 1;
-
       for (positionDB <- unanalyzed) {
         var position = grater[Position].asObject(positionDB);
         exe.write("position fen " + position.fen);
