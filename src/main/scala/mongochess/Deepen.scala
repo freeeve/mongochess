@@ -92,7 +92,7 @@ package object deepen {
             }
             var bestScore = -1000000.0;
             var forcedDraw:Option[Boolean] = Some(true)
-            newMoves.map ( m => if(m.forcedDraw == None && (m.score > -999.0 && m.score != 0.0)) {forcedDraw = None; println("not forced draw" +m.score);})
+            newMoves.map ( m => if(m.forcedDraw == None && (m.score > -999.0 && m.score != 0.0)) {forcedDraw = None;})
             if(bestScore == 0.0 && forcedDraw.getOrElse(false)) forcedDraw = Some(true)
             for(m <- newMoves) {
               if(m.score > bestScore) bestScore = m.score;
