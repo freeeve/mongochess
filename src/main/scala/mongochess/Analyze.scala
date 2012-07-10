@@ -79,18 +79,19 @@ package object analyze {
         // this should probably start at the base position each time, until all of the base moves are explored... then
         // move to the next level and treat it like base moves. need a flag on the moves to show analyzed?
         rand = rand * -1
-        if(positionsColl.count(MongoDBObject("priority" -> true)) > 0)
-          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("priority" -> -1, "minMoves" -> rand, "bestScore" -> 1)).limit(1);
+        if(positionsColl.count(MongoDBObject("priority" -> true, "claimed" -> MongoDBObject("$exists" -> false))) > 0)
+          positionsColl.findAndModify(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
+                                      MongoDBObject("priority" -> -1, "minMoves" -> rand, "bestScore" -> 1),
+                                      MongoDBObject("$set"-> MongoDBObject("claimed"->true, "ts" -> new Date)))
         else 
-          positionsColl.find(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false))).sort(MongoDBObject("minMoves" -> 1, "bestScore" -> 1)).limit(1);
-        //positionsColl.find(MongoDBObject("_id" -> new ObjectId("4fd9548e03649b52043e42a3")));
+          positionsColl.findAndModify(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
+                                      MongoDBObject("minMoves" -> 1, "bestScore" -> 1),
+                                      MongoDBObject("$set"-> MongoDBObject("claimed"->true, "ts" -> new Date)))
       } else {
         lastBestLink = bestLink;
-        positionsColl.find(MongoDBObject("_id" -> bestLink));
+        positionsColl.findAndModify(MongoDBObject("_id" -> bestLink), MongoDBObject("$set"-> MongoDBObject("claimed"->true, "ts" -> new Date)));
         //positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("priority" -> -1, "minMoves" -> 1, "bestScore" -> 1)).limit(1);
       }
-      //val unanalyzed = positionsColl.find("maxDepth" $lt maxDepth).sort(MongoDBObject("bestScore" -> 1)).limit(10);
-      if (unanalyzed.size == 0) maxDepth += 1;
 
       for (positionDB <- unanalyzed) {
         var position = grater[Position].asObject(positionDB);
