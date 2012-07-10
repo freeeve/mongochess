@@ -82,7 +82,7 @@ package object deepen {
               if(m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
             }
             // if we came back with a mate or draw, let's try another option
-            if(newMoves(idx).score < -999.0 || newMoves(idx).forcedDraw.getOrElse(true)) {
+            if(newMoves(idx).score < -999.0 || newMoves(idx).forcedDraw.getOrElse(false)) {
               for(m <- parent.moves)  {
                 if(m.score > -999.0) {
                   println("setting priority for : " + m.link)
