@@ -1,4 +1,4 @@
-package wes.mongochess
+/*package wes.mongochess
 
 import com.novus.salat._
 import com.novus.salat.annotations._
@@ -26,66 +26,100 @@ package object prune {
   }
 
   def main(args: Array[String]): Unit = {
-    val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
-      new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
-    //val mongoConn = MongoConnection();
+    //val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
+    //new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
+    val mongoConn = MongoConnection();
     val fen = new FEN;
     val positionsColl = mongoConn("mongochess")("positions");
     while (true) {
-      val toPrune = positionsColl.find(MongoDBObject("possiblePrune" -> true,"parentDeepen"->MongoDBObject("$exists" -> false), "minMoves" -> MongoDBObject("$gt" -> 0))).sort(MongoDBObject("minMoves" -> -1)).limit(1);
-      for (prunedb <- toPrune) {
-        val prune = grater[Position].asObject(prunedb)
-        println("pruning: " + prune.fen)
-        // clear links
-        if (prune.moves != null) {
-          val movesWithoutLinks: Seq[Move] = prune.moves.map { move =>
-            move.copy(link = null)
-          }
-          if (prune.moves.size == 0) {
-            positionsColl.remove(MongoDBObject("_id" -> prune.id))
-          } else {
-            for (move <- prune.moves if move.link != null) {
-              println("setting to remove: " + move.link)
-              positionsColl.update(MongoDBObject("_id" -> move.link), MongoDBObject("$set" -> MongoDBObject("prune" -> true)))
+      val toPrune = positionsColl.findAndModify(
+        MongoDBObject("possiblePrune" -> true, "claimed" -> MongoDBObject("$exists" -> false), "parentDeepen" -> MongoDBObject("$exists" -> false), "minMoves" -> MongoDBObject("$gt" -> 0)),
+        MongoDBObject("minMoves" -> -1),
+        MongoDBObject("$set" -> MongoDBObject("claimed" -> true)))
+      if (toPrune != None)
+        for (prunedb <- toPrune) {
+          val prune = grater[Position].asObject(prunedb)
+          println("pruning: " + prune.fen)
+          // clear links 
+          if (prune.moves != null) {
+            if (prune.moves.size == 0) {
+              positionsColl.remove(MongoDBObject("_id" -> prune.id))
+            } else {
+              for (move <- prune.moves if move.fen != null) {
+                println("setting to remove: " + move.fen)
+                positionsColl.update(MongoDBObject("fen" -> move.fen), MongoDBObject("$set" -> MongoDBObject("prune" -> true)))
+              }
+              val pruneCopy = prune.copy(possiblePrune = None)
+              positionsColl.save(grater[Position].asDBObject(pruneCopy))
             }
-
-            val pruneCopy = prune.copy(possiblePrune = None, moves = movesWithoutLinks)
+          } else {
+            val pruneCopy = prune.copy(possiblePrune = None)
             positionsColl.save(grater[Position].asDBObject(pruneCopy))
           }
-        } else {
-          val pruneCopy = prune.copy(possiblePrune = None)
-          positionsColl.save(grater[Position].asDBObject(pruneCopy))
-        }
 
-      }
-      val toRemove = positionsColl.find(MongoDBObject("prune" -> true, "minMoves" -> MongoDBObject("$gt" -> 0))).sort(MongoDBObject("minMoves" -> -1)).limit(10);
-      for (prunedb <- toRemove) {
-        val prune = grater[Position].asObject(prunedb)
-        println("attempting to remove: " + prune.fen)
-        val parents = positionsColl.find(MongoDBObject("moves.link" -> prune.id))
-        var canRemove = true
-        for(parentdb <- parents) {
-          val parent = grater[Position].asObject(parentdb)
-          if(parent.possiblePrune.getOrElse(true) && !parent.prune.getOrElse(false)) canRemove = false
         }
-        if(canRemove) {
-          
-        if (prune.moves != null) {
-          for (move <- prune.moves if move.link != null) {
-            println("setting to remove: " + move.link)
-            positionsColl.update(MongoDBObject("_id" -> move.link), MongoDBObject("$set" -> MongoDBObject("prune" -> true)))
+      val toRemove = positionsColl.findAndModify(
+        MongoDBObject("prune" -> true, "claimed" -> MongoDBObject("$exists" -> false), "parentDeepen" -> MongoDBObject("$exists" -> false), "minMoves" -> MongoDBObject("$gt" -> 0)),
+        MongoDBObject("minMoves" -> 1),
+        MongoDBObject("$set" -> MongoDBObject("claimed" -> true)))
+      if (toRemove != None)
+        for (prunedb <- toRemove) {
+          val prune = grater[Position].asObject(prunedb)
+          println("attempting to remove: " + prune.fen)
+          val parents = positionsColl.find(MongoDBObject("moves.fen" -> prune.fen))
+          var canRemove = true
+          if (parents.size == 1) {
+            for (parentdb <- parents) {
+              val parent = grater[Position].asObject(parentdb)
+              def findMoveByFen(moves: Seq[Move], fenPos: String): Int = {
+                moves.zipWithIndex.foreach {
+                  case (move, idx) =>
+                    if (move.fen == fenPos) {
+                      return idx;
+                    }
+                }
+                // this should never happen
+                println("this should never happen: -1")
+                return -1;
+              }
+              var idx = findMoveByFen(parent.moves, prune.fen)
+              if (parent.moves(idx).score != prune.bestScore) {
+                canRemove = false
+                println("parent not updated yet, deepening first: " + parent.fen)
+                positionsColl.save(grater[Position].asDBObject(prune.copy(parentDeepen = Some(true))))
+              }
+            }
+          } else if (parents.size > 1) {
+            for (parentdb <- parents) {
+              val parent = grater[Position].asObject(parentdb)
+              if (!parent.possiblePrune.getOrElse(false) && !parent.prune.getOrElse(false)) {
+                canRemove = false
+                println("parent blocking: " + prune.fen + "; " + parent.fen)
+              }
+            }
           }
+
+          if (canRemove) {
+
+            if (prune.moves != null) {
+              for (move <- prune.moves if move.fen != null) {
+                //println("setting to remove: " + move.fen)
+                positionsColl.update(MongoDBObject("fen" -> move.fen), MongoDBObject("$set" -> MongoDBObject("prune" -> true)))
+              }
+            }
+            println("removing (" + prune.id + "): " + prune.fen)
+            positionsColl.remove(MongoDBObject("fen" -> prune.fen))
+
+          } else {
+            println("couldn't remove: " + prune.fen);
+            positionsColl.update(MongoDBObject("fen" -> prune.fen), MongoDBObject("$unset" -> MongoDBObject("prune" -> true)))
+          }
+
         }
-        positionsColl.remove(MongoDBObject("_id" -> prune.id))
-        } else {
-          val pruneCopy = prune.copy(prune = None)
-          positionsColl.save(grater[Position].asDBObject(pruneCopy))
-        }
-      }
-      if (toPrune.size == 0 && toRemove.size == 0) {
-        Thread.sleep(10000)
+      if (toPrune == None && toRemove == None) {
+        Thread.sleep(1000)
       }
     }
 
   }
-}
+}*/
