@@ -71,7 +71,7 @@ package object analyze {
     stockfish.stop();
   }
 
-  def deepenParent(child: Position) = {
+  def deepenParent(child: Position):Unit = {
     val parents = positionsColl.find(MongoDBObject("moves.fen" -> child.fen))
     for (parentdb <- parents) {
       val parent = grater[Position].asObject(parentdb)
@@ -130,6 +130,7 @@ package object analyze {
 
         savePosition(parent.copy(forcedDraw = forcedDraw, bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a: Move, b: Move) => { a.score > b.score })))
         if (abs(bestScore) > 999.0 || forcedDraw.getOrElse(false)) {
+          deepenParent(parent)
           prunePosition(parent)
         }
       }
@@ -256,7 +257,6 @@ package object analyze {
 
   def getNextPosition() = {
     if (bestFen == null || bestFen == lastBestFen) {
-      Thread.sleep(1500)
       positionsColl.findAndModify(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
         MongoDBObject("priority" -> -1, "minMoves" -> -1, "bestScore" -> 1),
         MongoDBObject("$set" -> MongoDBObject("claimed" -> true, "ts" -> new Date)))
