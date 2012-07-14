@@ -59,10 +59,14 @@ package object analyze {
               }
               println("analyzed in " + time + "ms; best score: " + position.bestScore + ".");
               println("bestFen: " + bestFen)
-              if (position.forcedDraw == true) println("position was a forcedDraw!")
-              savePosition(position)
-              createChildren(position)
               deepenParent(position)
+              if (abs(position.bestScore) > 999.0 || position.forcedDraw.getOrElse(false)) {
+                println("position is solved!")
+                prunePosition(position)
+              } else {
+                savePosition(position)
+                createChildren(position)
+              }
             }
           }
         }
@@ -76,6 +80,8 @@ package object analyze {
     for (parentdb <- parents) {
       val parent = grater[Position].asObject(parentdb)
       println("deepening parent: " + parent.fen + " ; " + parent.id)
+      val startingBestScore = parent.bestScore
+      val startingForcedDraw = parent.forcedDraw
       //find move that matches
       var idx = findMoveIdxByFen(parent, child.fen)
       val move = parent.moves(idx)
@@ -129,6 +135,10 @@ package object analyze {
         }
 
         savePosition(parent.copy(forcedDraw = forcedDraw, bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a: Move, b: Move) => { a.score > b.score })))
+        if(startingBestScore != bestScore || startingForcedDraw != forcedDraw) {
+           deepenParent(parent)
+        }
+        
         if (abs(bestScore) > 999.0 || forcedDraw.getOrElse(false)) {
           deepenParent(parent)
           prunePosition(parent)
@@ -139,15 +149,12 @@ package object analyze {
 
   def prunePosition(prune: Position): Unit = {
     println("pruning: (" + prune.id + ")" + prune.fen)
-    if (prune.moves != null) {
-      if (prune.moves.size == 0) {
-        positionsColl.remove(MongoDBObject("_id" -> prune.id))
-      } else {
-        for (move <- prune.moves if move.fen != null) {
-          pruneFEN(move.fen)
-        }
+    if (prune.moves != null && prune.moves.size != 0) {
+      for (move <- prune.moves if move.fen != null) {
+        pruneFEN(move.fen)
       }
-    }
+    }      
+    positionsColl.remove(MongoDBObject("_id" -> prune.id))
   }
 
   def pruneFEN(fenStr: String) = {
@@ -257,7 +264,8 @@ package object analyze {
 
   def getNextPosition() = {
     if (bestFen == null || bestFen == lastBestFen) {
-      positionsColl.findAndModify(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
+      //positionsColl.findAndModify(MongoDBObject("maxDepth" -> MongoDBObject("$lt" -> maxDepth), "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
+      positionsColl.findAndModify(MongoDBObject("maxDepth" -> 0, "forcedDraw" -> MongoDBObject("$exists" -> false), "claimed" -> MongoDBObject("$exists" -> false)),
         MongoDBObject("priority" -> -1, "minMoves" -> -1, "bestScore" -> 1),
         MongoDBObject("$set" -> MongoDBObject("claimed" -> true, "ts" -> new Date)))
     } else {
