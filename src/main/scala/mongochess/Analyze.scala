@@ -31,7 +31,7 @@ package object analyze {
 
   var bestFen: String = null;
   var lastBestFen: String = null;
-  var maxDepth = 15;
+  var maxDepth = 10;
   val maxThreshhold = 999.0;
 
   def main(args: Array[String]): Unit = {
@@ -50,6 +50,7 @@ package object analyze {
           } else if (position.forcedDraw.getOrElse(false)) {
             bestFen = null;
           } else {
+            maxDepth = if(abs(position.bestScore) > 20) 20 else 10
             println("analyzing to depth " + maxDepth + " cur best: " + position.bestScore + ": " + position.fen);
             position = readUntilBestMove(position)
             if (position != null) {
@@ -75,76 +76,90 @@ package object analyze {
     stockfish.stop();
   }
 
-  def deepenParent(child: Position):Unit = {
+  // this isn't quite right. it's not getting the mates and -mates moved up sometimes
+  // need to troubleshoot why
+  // draws seem to work
+  def deepenParent(child: Position): Unit = {
+    println("deepening from child: " + child.fen + " ; " + child.id + "; bestScore: "+child.bestScore)
     val parents = positionsColl.find(MongoDBObject("moves.fen" -> child.fen))
     for (parentdb <- parents) {
       val parent = grater[Position].asObject(parentdb)
-      println("deepening parent: " + parent.fen + " ; " + parent.id)
+      println("deepening parent: " + parent.fen + " ; " + parent.id + "; bestScore: "+parent.bestScore)
       val startingBestScore = parent.bestScore
       val startingForcedDraw = parent.forcedDraw
       //find move that matches
       var idx = findMoveIdxByFen(parent, child.fen)
       val move = parent.moves(idx)
-      // if parent move depth <= child depth, deepen
-      if (move.depth <= child.maxDepth || abs(child.bestScore) > 999.0 || child.forcedDraw.getOrElse(false)) {
-        // copy moves/scores/bestScore from child record
-        // set depth for parent move to child depth + 1
-        // need to swap signs for scores from the child
-        val newMoves = if (child.forcedDraw.getOrElse(false)) {
-          parent.moves.updated(idx,
-            move.copy(depth = parent.moves(idx).depth + 1,
-              score = 0,
-              forcedDraw = child.forcedDraw))
-        } else {
-          parent.moves.updated(idx,
-            move.copy(depth = child.maxDepth + 1,
-              score = if (abs(child.bestScore) < 999.0) child.bestScore * -1.0 else child.bestScore * -1.0 + 1.0 * child.bestScore / abs(child.bestScore),
-              scores = parent.moves(idx).scores ++ child.moves(0).scores.slice(parent.moves(idx).depth - 1, child.moves(0).scores.size).map { s => s * -1.0 },
-              bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves,
-              endFen = child.moves(0).endFen,
-              forcedDraw = child.forcedDraw))
-        }
-        // find lowest depth that isn't mate (max complete search depth so far for this node)
-        var minDepth = 10000;
-        var bestScore = -1000001.0;
-        var forcedDraw: Option[Boolean] = Some(true)
-        newMoves.map(m => {
-          if (!m.forcedDraw.getOrElse(false) && m.score > -999.0) { forcedDraw = None; }
-          if (m.score > bestScore) { bestScore = m.score; }
-          if (m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
-        })
-        if (bestScore != 0.0) forcedDraw = None
+      println("replacing move score: "+move.score + " with child score: "+getChildScoreParentPerspective(child.bestScore))
+      // copy moves/scores/bestScore from child record
+      // set depth for parent move to child depth + 1
+      // need to swap signs for scores from the child
+      // maybe the child forced draw is being set weird...
+      val newMoves = 
+        parent.moves.updated(idx,
+          move.copy(depth = child.maxDepth + 1,
+            score = getChildScoreParentPerspective(child.bestScore),
+            scores = Seq(parent.moves(idx).scores(0)) ++ child.moves(0).scores.map { s => s * -1.0 },
+            bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves,
+            endFen = child.moves(0).endFen,
+            forcedDraw = child.forcedDraw))
+      var newParent:Position = parent.copy(moves = newMoves)
+      // find lowest depth that isn't mate (max complete search depth so far for this node)
+      // get best score
+      // get forcedDraw
+      var minDepth = 10000;
+      var bestScore = getBestScore(newParent)
+      var forcedDraw: Option[Boolean] = Some(true)
+      newMoves.map(m => {
+        if (!m.forcedDraw.getOrElse(false) && m.score > -999.0) { forcedDraw = None; }
+        if (m.depth < minDepth && abs(m.score) < 999.0) minDepth = m.depth;
+      })
+      if (bestScore != 0.0) forcedDraw = None
 
-        if (forcedDraw.getOrElse(false)) println("this parent is a forced draw! (" + parent.id + ") " + parent.fen)
-        // if we came back with a mate or draw, let's try another option
-        if (bestScore <= 0.0 && !forcedDraw.getOrElse(false) && (newMoves(idx).score < -999.0 || newMoves(idx).forcedDraw.getOrElse(false))) {
-          var nextBest = -1000002.0
-          var nextFen: String = null
-          for (m <- parent.moves if m.fen != child.fen) {
-            if (m.score > -999.0 && !m.forcedDraw.getOrElse(false)) {
-              if (nextBest < m.score) {
-                nextBest = m.score
-                nextFen = m.fen
-              }
+      // if we came back with a mate or draw, let's try another option
+      if (!forcedDraw.getOrElse(false) && (child.bestScore > 999.0 || child.forcedDraw.getOrElse(false))) {
+        var nextBest = -1000002.0
+        var nextFen: String = null
+        for (m <- parent.moves if m.fen != child.fen) {
+          if (m.score > -999.0 && !m.forcedDraw.getOrElse(false)) {
+            if (nextBest < m.score) {
+              nextBest = m.score
+              nextFen = m.fen
             }
           }
-          if (nextFen != null) {
-            println("setting priority for : " + nextFen)
-            positionsColl.update(MongoDBObject("fen" -> nextFen), MongoDBObject("$set" -> MongoDBObject("priority" -> true)))
-          }
         }
-
-        savePosition(parent.copy(forcedDraw = forcedDraw, bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a: Move, b: Move) => { a.score > b.score })))
-        if(startingBestScore != bestScore || startingForcedDraw != forcedDraw) {
-           deepenParent(parent)
-        }
-        
-        if (abs(bestScore) > 999.0 || forcedDraw.getOrElse(false)) {
-          deepenParent(parent)
-          prunePosition(parent)
+        if (nextFen != null) {
+          println("setting priority for : " + nextFen)
+          positionsColl.update(MongoDBObject("fen" -> nextFen), MongoDBObject("$set" -> MongoDBObject("priority" -> true)))
         }
       }
+      println("deepened parent: " + parent.fen + " ; " + parent.id + "; new bestScore: "+bestScore)
+      newParent = newParent.copy(forcedDraw = forcedDraw, bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a: Move, b: Move) => { a.score > b.score }))
+      savePosition(newParent)
+      if (startingBestScore != bestScore || startingForcedDraw.getOrElse(false) != forcedDraw.getOrElse(false)) {
+        deepenParent(newParent)
+      }
+
+      if (abs(bestScore) > 999.0 || forcedDraw.getOrElse(false)) {
+        deepenParent(newParent)
+        prunePosition(newParent)
+      }
     }
+  }
+  
+  def getBestScore(pos:Position):Double = {
+    var bestScore = -100000.0;
+    //println("calculating bestScore for: "+pos.fen)
+    for(move <- pos.moves) {
+      //println("comparing cur best: " + bestScore + " to " + move.score)
+      if(move.score > bestScore) bestScore = move.score
+    }
+    bestScore
+  }
+  
+  def getChildScoreParentPerspective(childScore:Double) = {            
+    // some funky math to negate the score (non-mate and mate)
+    if (abs(childScore) < 999.0) childScore * -1.0 else childScore * -1.0 + 1.0 * childScore / abs(childScore)
   }
 
   def prunePosition(prune: Position): Unit = {
@@ -153,7 +168,7 @@ package object analyze {
       for (move <- prune.moves if move.fen != null) {
         pruneFEN(move.fen)
       }
-    }      
+    }
     positionsColl.remove(MongoDBObject("_id" -> prune.id))
   }
 
@@ -196,7 +211,7 @@ package object analyze {
         val childopt = positionsColl.findOne(MongoDBObject("fen" -> startFen))
         if (childopt != None) {
           val child = grater[Position].asObject(childopt.get)
-          if(!forcedDraw.getOrElse(false)) forcedDraw = child.forcedDraw
+          if (!forcedDraw.getOrElse(false)) forcedDraw = child.forcedDraw
           stored = true
         }
 
@@ -326,7 +341,7 @@ package object analyze {
 
   /* returns an updated copy of the position */
   def updatePositionMoves(position: Position, moveStr: String, bestMoves: Seq[String],
-        score: Double, depth: Int): Position = {
+    score: Double, depth: Int): Position = {
     val idx = findMoveIdxByStr(position, moveStr)
     if (idx == -1) {
       position.copy(moves = position.moves :+
