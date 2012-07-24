@@ -22,11 +22,11 @@ package object analyze {
 
   val san = new SAN
   val fen = new FEN
-  val stockfish = new Stockfish(1024, 100)
+  val stockfish = new Stockfish(4096, 100)
 
-  //val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
-  //new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
-  val mongoConn = MongoConnection()
+  val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
+  new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
+  //val mongoConn = MongoConnection()
   val positionsColl = mongoConn("mongochess")("positions");
 
   var bestFen: String = null;
@@ -50,7 +50,8 @@ package object analyze {
           } else if (position.forcedDraw.getOrElse(false)) {
             bestFen = null;
           } else {
-            maxDepth = if(abs(position.bestScore) > 20) 20 else 10
+            maxDepth = if(abs(position.bestScore) > 20) 20 
+                       else 10
             println("analyzing to depth " + maxDepth + " cur best: " + position.bestScore + ": " + position.fen);
             position = readUntilBestMove(position)
             if (position != null) {
@@ -269,8 +270,14 @@ package object analyze {
     positionsColl.save(grater[Position].asDBObject(position))
   }
 
-  def isDrawn(board: ChessBoard) = {
+  def isDrawn(board: ChessBoard):Option[Boolean] = {
     if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size > 2 && !board.isStalemate() && !board.is50MoveRuleApplicible) {
+      None
+    } else if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size == 3) {
+      for(piece <- board.getUnCapturedPieces(board.getUnCapturedPieces(true).size == 2)) {
+        if(piece.isBishop() || piece.isKnight()) 
+          return Some(true)
+      }
       None
     } else {
       Some(true)
