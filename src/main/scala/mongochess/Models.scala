@@ -11,24 +11,22 @@ case class Move(
   move: String,
   score: Double = 0.0,
   depth: Int = 0,
-  link: ObjectId = null,
   mate: Option[Int] = None,
   scores: Seq[Double] = Seq[Double](),
   bestMoves: Seq[String] = null,
   endFen: String = null,
-  forcedDraw: Option[Boolean] = None
+  forcedDraw: Option[Boolean] = None,
+  fen:String = null,
+  @Ignore stored:Boolean = false
 )
 
 case class Position( 
   @Key("_id") id: ObjectId = new ObjectId,
   fen: String,
   pos: String,
-  bestScore: Double = -500.0,
+  bestScore: Double = -50000.0,
   maxDepth: Int = 0,
   minMoves: Int = 0,
   moves: Seq[Move]  = null,
-  parentDeepen:Option[Boolean] = None,
-  possiblePrune:Option[Boolean] = None,
-  prune:Option[Boolean] = None,
   forcedDraw:Option[Boolean] = None
 )
