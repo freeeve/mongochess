@@ -50,8 +50,10 @@ package object analyze {
           } else if (position.forcedDraw.getOrElse(false)) {
             bestFen = null;
           } else {
-            maxDepth = if(abs(position.bestScore) > 20) 20 
-                       else 10
+            maxDepth = if(abs(position.bestScore) < 1.0) 5 
+                       else if(abs(position.bestScore) < 5.0) 10
+                       else if(abs(position.bestScore) < 20.0) 15
+                       else 20
             println("analyzing to depth " + maxDepth + " cur best: " + position.bestScore + ": " + position.fen);
             position = readUntilBestMove(position)
             if (position != null) {
