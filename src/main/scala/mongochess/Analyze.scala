@@ -245,13 +245,17 @@ package object analyze {
       for (move <- position.moves) {
         if (!move.stored && abs(move.score) < 999.0 && !move.forcedDraw.getOrElse(false)) {
           val shortenedFen = getPositionFEN(move.fen)
-          println("creating new position for " + move.move + ": " + move.fen + "; score: " + move.score)
-          savePosition(Position(
-            fen = move.fen,
+          val child = Position(fen = move.fen,
             pos = shortenedFen,
             minMoves = position.minMoves + 1,
             bestScore = move.score * -1.0,
-            maxDepth = 0))
+            maxDepth = 0)
+          if(!isDrawn(fen.stringToBoard(child.fen).asInstanceOf[ChessBoard]).getOrElse(false)) {
+            println("creating new position for " + move.move + ": " + move.fen + "; score: " + move.score)
+            savePosition(child)
+          } else {
+            println("not creating drawn position");
+          }
         }
       }
     }
@@ -271,16 +275,18 @@ package object analyze {
   }
 
   def isDrawn(board: ChessBoard):Option[Boolean] = {
-    if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size > 2 && !board.isStalemate() && !board.is50MoveRuleApplicible) {
-      None
-    } else if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size == 3) {
+    if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size == 3) {
       for(piece <- board.getUnCapturedPieces(board.getUnCapturedPieces(true).size == 2)) {
-        if(piece.isBishop() || piece.isKnight()) 
+        if(piece.isBishop() || piece.isKnight()) { 
+          println("only bishop or knight left. drawn");
           return Some(true)
+        }
       }
-      None
+    }
+    if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size > 2 && !board.isStalemate() && !board.is50MoveRuleApplicible) {
+        None
     } else {
-      Some(true)
+        Some(true)
     }
   }
 
