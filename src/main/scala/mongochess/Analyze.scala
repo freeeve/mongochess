@@ -22,10 +22,10 @@ package object analyze {
 
   val san = new SAN
   val fen = new FEN
-  val stockfish = new Stockfish(4096, 100)
+  val stockfish = new Stockfish(1024, 100)
 
   val mongoConn = MongoConnection(options = MongoOptions(autoConnectRetry = true), replicaSetSeeds =
-  new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
+    new com.mongodb.ServerAddress("mongo1.skeweredrook.com") :: new com.mongodb.ServerAddress("mongo2.skeweredrook.com") :: Nil);
   //val mongoConn = MongoConnection()
   val positionsColl = mongoConn("mongochess")("positions");
 
@@ -38,39 +38,33 @@ package object analyze {
     stockfish.start()
     while (true) {
       // get next position to analyze
+      // need to make sure next position is not a repeat
       val unanalyzed = getNextPosition()
       if (unanalyzed.size > 0) {
         for (positionDB <- unanalyzed) {
           val startTime = System.currentTimeMillis
           var position = grater[Position].asObject(positionDB);
-          if (position.maxDepth == maxDepth) {
-            positionsColl.update(MongoDBObject("_id" -> position.id), MongoDBObject("$set" -> MongoDBObject("parentDeepen" -> true)))
-            println("already analyzed " + position.fen + "; setting to deepen")
-            bestFen = null;
-          } else if (position.forcedDraw.getOrElse(false)) {
-            bestFen = null;
-          } else {
-            maxDepth = if(abs(position.bestScore) < 1.0) 5 
-                       else if(abs(position.bestScore) < 5.0) 10
-                       else if(abs(position.bestScore) < 20.0) 15
-                       else 20
-            println("analyzing to depth " + maxDepth + " cur best: " + position.bestScore + ": " + position.fen);
-            position = readUntilBestMove(position)
-            if (position != null) {
-              val time = System.currentTimeMillis - startTime
-              if (time > 10000) {
-                new TxChessBoardDisplay(fen.stringToBoard(position.fen).asInstanceOf[ChessBoard]).print
-              }
-              println("analyzed in " + time + "ms; best score: " + position.bestScore + ".");
-              println("bestFen: " + bestFen)
-              deepenParent(position)
-              if (abs(position.bestScore) > 999.0 || position.forcedDraw.getOrElse(false)) {
-                println("position is solved!")
-                prunePosition(position)
-              } else {
-                savePosition(position)
-                createChildren(position)
-              }
+
+          maxDepth = if (abs(position.bestScore) < 1.0) 5
+          else if (abs(position.bestScore) < 5.0) 10
+          else if (abs(position.bestScore) < 20.0) 15
+          else 15
+          println("analyzing to depth " + maxDepth + " cur best: " + position.bestScore + ": " + position.fen);
+          position = readUntilBestMove(position)
+          if (position != null) {
+            val time = System.currentTimeMillis - startTime
+            if (time > 10000) {
+              new TxChessBoardDisplay(fen.stringToBoard(position.fen).asInstanceOf[ChessBoard]).print
+            }
+            println("analyzed in " + time + "ms; best score: " + position.bestScore + ".");
+            println("bestFen: " + bestFen)
+            deepenParent(position)
+            if (abs(position.bestScore) > 999.0 || position.forcedDraw.getOrElse(false)) {
+              println("position is solved!")
+              prunePosition(position)
+            } else {
+              savePosition(position)
+              createChildren(position)
             }
           }
         }
@@ -79,26 +73,23 @@ package object analyze {
     stockfish.stop();
   }
 
-  // this isn't quite right. it's not getting the mates and -mates moved up sometimes
-  // need to troubleshoot why
-  // draws seem to work
   def deepenParent(child: Position): Unit = {
-    println("deepening from child: " + child.fen + " ; " + child.id + "; bestScore: "+child.bestScore)
+    println("deepening from child: " + child.fen + " ; " + child.id + "; bestScore: " + child.bestScore)
     val parents = positionsColl.find(MongoDBObject("moves.fen" -> child.fen))
     for (parentdb <- parents) {
       val parent = grater[Position].asObject(parentdb)
-      println("deepening parent: " + parent.fen + " ; " + parent.id + "; bestScore: "+parent.bestScore)
+      println("deepening parent: " + parent.fen + " ; " + parent.id + "; bestScore: " + parent.bestScore)
       val startingBestScore = parent.bestScore
       val startingForcedDraw = parent.forcedDraw
       //find move that matches
       var idx = findMoveIdxByFen(parent, child.fen)
       val move = parent.moves(idx)
-      println("replacing move score: "+move.score + " with child score: "+getChildScoreParentPerspective(child.bestScore))
+      println("replacing move score: " + move.score + " with child score: " + getChildScoreParentPerspective(child.bestScore))
       // copy moves/scores/bestScore from child record
       // set depth for parent move to child depth + 1
       // need to swap signs for scores from the child
       // maybe the child forced draw is being set weird...
-      val newMoves = 
+      val newMoves =
         parent.moves.updated(idx,
           move.copy(depth = child.maxDepth + 1,
             score = getChildScoreParentPerspective(child.bestScore),
@@ -106,7 +97,7 @@ package object analyze {
             bestMoves = Seq(child.moves(0).move) ++ child.moves(0).bestMoves,
             endFen = child.moves(0).endFen,
             forcedDraw = child.forcedDraw))
-      var newParent:Position = parent.copy(moves = newMoves)
+      var newParent: Position = parent.copy(moves = newMoves)
       // find lowest depth that isn't mate (max complete search depth so far for this node)
       // get best score
       // get forcedDraw
@@ -128,15 +119,12 @@ package object analyze {
             if (nextBest < m.score) {
               nextBest = m.score
               nextFen = m.fen
+              bestFen = nextFen
             }
           }
         }
-        if (nextFen != null) {
-          println("setting priority for : " + nextFen)
-          positionsColl.update(MongoDBObject("fen" -> nextFen), MongoDBObject("$set" -> MongoDBObject("priority" -> true)))
-        }
       }
-      println("deepened parent: " + parent.fen + " ; " + parent.id + "; new bestScore: "+bestScore)
+      println("deepened parent: " + parent.fen + " ; " + parent.id + "; new bestScore: " + bestScore)
       newParent = newParent.copy(forcedDraw = forcedDraw, bestScore = bestScore, maxDepth = minDepth, moves = newMoves.sortWith(lt = (a: Move, b: Move) => { a.score > b.score }))
       savePosition(newParent)
       if (startingBestScore != bestScore || startingForcedDraw.getOrElse(false) != forcedDraw.getOrElse(false)) {
@@ -149,18 +137,18 @@ package object analyze {
       }
     }
   }
-  
-  def getBestScore(pos:Position):Double = {
+
+  def getBestScore(pos: Position): Double = {
     var bestScore = -100000.0;
     //println("calculating bestScore for: "+pos.fen)
-    for(move <- pos.moves) {
+    for (move <- pos.moves) {
       //println("comparing cur best: " + bestScore + " to " + move.score)
-      if(move.score > bestScore) bestScore = move.score
+      if (move.score > bestScore) bestScore = move.score
     }
     bestScore
   }
-  
-  def getChildScoreParentPerspective(childScore:Double) = {            
+
+  def getChildScoreParentPerspective(childScore: Double) = {
     // some funky math to negate the score (non-mate and mate)
     if (abs(childScore) < 999.0) childScore * -1.0 else childScore * -1.0 + 1.0 * childScore / abs(childScore)
   }
@@ -272,12 +260,12 @@ package object analyze {
     positionsColl.save(grater[Position].asDBObject(position))
   }
 
-  def isDrawn(board: ChessBoard):Option[Boolean] = {
+  def isDrawn(board: ChessBoard): Option[Boolean] = {
     if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size > 2 && !board.isStalemate() && !board.is50MoveRuleApplicible) {
       None
     } else if (board.getUnCapturedPieces(false).size + board.getUnCapturedPieces(true).size == 3) {
-      for(piece <- board.getUnCapturedPieces(board.getUnCapturedPieces(true).size == 2)) {
-        if(piece.isBishop() || piece.isKnight()) 
+      for (piece <- board.getUnCapturedPieces(board.getUnCapturedPieces(true).size == 2)) {
+        if (piece.isBishop() || piece.isKnight())
           return Some(true)
       }
       None
